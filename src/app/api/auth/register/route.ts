@@ -1,5 +1,19 @@
 import { NextRequest } from "next/server";
+import { registerSchema } from "@/schemas/auth.schema";
+import * as authService from "@/services/auth.service";
+import { successResponse, errorResponse } from "@/utils/api-response";
+import { validateBody } from "@/middleware/validate";
+import { AppError } from "@/utils/errors";
 
 export async function POST(request: NextRequest) {
-  // TODO: register
+  try {
+    const body = await validateBody(request, registerSchema);
+    const result = await authService.register(body);
+    return successResponse(result, 201);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return errorResponse(error.message, error.statusCode);
+    }
+    return errorResponse("Kayıt başarısız", 500);
+  }
 }
