@@ -12,8 +12,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force",
-    "cron:stale": "tsx src/jobs/staleScanner.ts"
+    "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
     "next": "^15.2.0",
