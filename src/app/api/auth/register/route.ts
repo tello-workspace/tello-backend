@@ -11,9 +11,10 @@ export async function POST(request: NextRequest) {
     const result = await authService.register(body);
     return successResponse(result, 201);
   } catch (error) {
+    console.error("REGISTER ERROR:", error);
     if (error instanceof AppError) {
       return errorResponse(error.message, error.statusCode);
     }
-    return errorResponse("Kayıt başarısız", 500);
+    return errorResponse(error instanceof Error ? error.message : String(error), 500);
   }
 }
