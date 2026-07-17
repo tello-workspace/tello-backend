@@ -52,40 +52,57 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
 
-  ownedProjects Project[]       @relation("ProjectOwner")
-  memberships   ProjectMember[]
-  createdCards  Card[]          @relation("CardCreator")
-  assignedCards Card[]          @relation("CardAssignee")
-  comments      Comment[]
-  activities    Activity[]
-  notifications Notification[]
+  ownedOrganizations   Organization[]       @relation("OrganizationOwner")
+  organizationMemberships OrganizationMember[]
+  ownedProjects        Project[]            @relation("ProjectOwner")
+  createdCards         Card[]               @relation("CardCreator")
+  assignedCards        Card[]               @relation("CardAssignee")
+  comments             Comment[]
+  activities           Activity[]
+  notifications        Notification[]
 }
 
-model Project {
+// ---------- ORGANIZATION ----------
+
+model Organization {
   id          String   @id @default(cuid())
   name        String
   description String?
   ownerId     String
   createdAt   DateTime @default(now())
 
-  owner      User            @relation("ProjectOwner", fields: [ownerId], references: [id])
-  members    ProjectMember[]
-  columns    Column[]
-  labels     Label[]
-  activities Activity[]
+  owner    User                @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  members  OrganizationMember[]
+  projects Project[]
 }
 
-// N:N ara tablo + rol bilgisi (composite primary key örneği)
-model ProjectMember {
-  projectId String
-  userId    String
-  role      Role     @default(MEMBER)
-  joinedAt  DateTime @default(now())
+model OrganizationMember {
+  organizationId String
+  userId         String
+  role           Role     @default(MEMBER)
+  joinedAt       DateTime @default(now())
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([projectId, userId])
+  @@id([organizationId, userId])
+}
+
+// ---------- PROJECT ----------
+
+model Project {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  organizationId String
+  ownerId        String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User         @relation("ProjectOwner", fields: [ownerId], references: [id])
+  columns      Column[]
+  labels       Label[]
+  activities   Activity[]
 }
 
 model Column {
