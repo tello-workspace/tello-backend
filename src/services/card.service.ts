@@ -110,7 +110,8 @@ export async function updateCard(cardId: string, input: UpdateCardInput, userId:
   await checkColumnAccess(card.columnId, userId);
 
   // Kolon değişikliği varsa hedef kolonun da erişilebilir olduğunu kontrol et
-  if (input.columnId && input.columnId !== card.columnId) {
+  const isColumnChange = input.columnId && input.columnId !== card.columnId;
+  if (isColumnChange) {
     await checkColumnAccess(input.columnId, userId);
   }
 
@@ -122,6 +123,16 @@ export async function updateCard(cardId: string, input: UpdateCardInput, userId:
   if (input.dueDate !== undefined) updateData.dueDate = input.dueDate ? new Date(input.dueDate) : null;
   if (input.columnId !== undefined) updateData.columnId = input.columnId;
   if (input.position !== undefined) updateData.position = input.position;
+
+  // Kolon değişikliği var ama position verilmemişse sona ekle
+  if (isColumnChange && input.position === undefined) {
+    const lastCard = await prisma.card.findFirst({
+      where: { columnId: input.columnId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+    updateData.position = (lastCard?.position ?? 0) + 1;
+  }
 
   // Kartta değişiklik var → lastActivityAt güncelle
   if (Object.keys(updateData).length > 0) {
