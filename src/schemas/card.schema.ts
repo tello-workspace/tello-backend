@@ -5,7 +5,7 @@ export const createCardSchema = z.object({
   description: z.string().max(2000).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
   assigneeId: z.string().optional(),
-  dueDate: z.string().datetime().optional(),
+  dueDate: z.string().nullable().optional(),
   position: z.number().optional(),
 });
 
@@ -14,7 +14,7 @@ export const updateCardSchema = z.object({
   description: z.string().max(2000).nullable().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
   assigneeId: z.string().nullable().optional(),
-  dueDate: z.string().datetime().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
   columnId: z.string().optional(),
   position: z.number().optional(),
 });
