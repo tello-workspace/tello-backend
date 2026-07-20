@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { addMemberSchema } from "@/schemas/organization.schema";
+import { addMemberSchema, updateMemberRoleSchema } from "@/schemas/organization.schema";
 import * as organizationService from "@/services/organization.service";
 import { successResponse, errorResponse } from "@/utils/api-response";
 import { validateBody } from "@/middleware/validate";
@@ -48,5 +48,25 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return errorResponse(error.message, error.statusCode, error.code);
     }
     return errorResponse("Üye çıkarılamadı", 500, "INTERNAL_ERROR");
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authError = await authenticate(request);
+  if (authError) return authError;
+
+  try {
+    const user = (request as AuthenticatedRequest).user;
+    const { id } = await params;
+    const body = await validateBody(request, updateMemberRoleSchema);
+    if (body instanceof Response) return body;
+
+    const member = await organizationService.updateMemberRole(id, body, user.id);
+    return successResponse(member);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return errorResponse(error.message, error.statusCode, error.code);
+    }
+    return errorResponse("Rol güncellenemedi", 500, "INTERNAL_ERROR");
   }
 }

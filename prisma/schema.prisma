@@ -41,6 +41,11 @@ enum NotificationType {
   DEADLINE_RISK     // deadline riski tespit edildi
   STALE_CARD        // kartın 7+ gündür hareketsiz
   WIP_EXCEEDED      // sütun WIP limitini aştı
+  ORG_JOINED        // organizasyona eklendin
+  ORG_REMOVED       // organizasyondan çıkarıldın
+  PROJECT_CREATED   // yeni proje oluşturuldu
+  PROJECT_DELETED   // bir proje silindi
+  ROLE_CHANGED      // rolün değiştirildi
 }
 
 // ---------- MODELS ----------

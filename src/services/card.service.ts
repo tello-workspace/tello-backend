@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NotFoundError, ForbiddenError } from "@/utils/errors";
+import * as notificationService from "@/services/notification.service";
 import type { CreateCardInput, UpdateCardInput } from "@/schemas/card.schema";
 import type { Priority } from "@prisma/client";
 
@@ -80,6 +81,15 @@ export async function createCard(columnId: string, input: CreateCardInput, userI
     },
   });
 
+  if (card.assigneeId) {
+    await notificationService.createNotification({
+      userId: card.assigneeId,
+      type: "ASSIGNED",
+      message: `"${card.title}" kartı size atandı`,
+      cardId: card.id,
+    });
+  }
+
   return card;
 }
 
@@ -134,9 +144,11 @@ export async function updateCard(cardId: string, input: UpdateCardInput, userId:
 
   // Kolon değişikliği varsa hedef kolonun da erişilebilir olduğunu kontrol et
   const isColumnChange = input.columnId && input.columnId !== card.columnId;
-  if (isColumnChange) {
+  if (isColumnChange && input.columnId) {
     await checkColumnAccess(input.columnId, userId);
   }
+
+  const oldAssigneeId = card.assigneeId;
 
   const updateData: Record<string, unknown> = {};
   if (input.title !== undefined) updateData.title = input.title;
@@ -176,6 +188,16 @@ export async function updateCard(cardId: string, input: UpdateCardInput, userId:
       assignee: { select: { id: true, name: true, email: true } },
     },
   });
+
+  // Atanan kişi değişmişse bildirim gönder
+  if (input.assigneeId && input.assigneeId !== oldAssigneeId) {
+    await notificationService.createNotification({
+      userId: input.assigneeId,
+      type: "ASSIGNED",
+      message: `"${updated.title}" kartı size atandı`,
+      cardId: updated.id,
+    });
+  }
 
   return updated;
 }

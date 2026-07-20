@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NotFoundError, ForbiddenError } from "@/utils/errors";
+import * as notificationService from "@/services/notification.service";
 import type { CreateProjectInput, UpdateProjectInput } from "@/schemas/project.schema";
 
 // Organization üyeliğini kontrol et
@@ -38,6 +39,13 @@ export async function createProject(organizationId: string, input: CreateProject
       columns: { orderBy: { position: "asc" } },
     },
   });
+
+  await notificationService.broadcastToOrganization(
+    organizationId,
+    "PROJECT_CREATED",
+    `"${project.name}" projesi oluşturuldu`,
+    userId, // yapan hariç
+  );
 
   return project;
 }
@@ -114,6 +122,13 @@ export async function deleteProject(organizationId: string, projectId: string, u
   if (project.ownerId !== userId && member.role !== "ADMIN") {
     throw new ForbiddenError("Sadece proje sahibi veya org admini silebilir");
   }
+
+  await notificationService.broadcastToOrganization(
+    organizationId,
+    "PROJECT_DELETED",
+    `"${project.name}" projesi silindi`,
+    userId, // yapan hariç
+  );
 
   await prisma.project.delete({ where: { id: projectId } });
 }

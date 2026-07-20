@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NotFoundError, ConflictError, UnauthorizedError } from "@/utils/errors";
-import type { CreateOrganizationInput, UpdateOrganizationInput, AddMemberInput } from "@/schemas/organization.schema";
+import * as notificationService from "@/services/notification.service";
+import type { CreateOrganizationInput, UpdateOrganizationInput, AddMemberInput, UpdateMemberRoleInput } from "@/schemas/organization.schema";
 import type { Role } from "@prisma/client";
 
 // Kullanıcının bir organizasyonda üye olup olmadığını kontrol et
@@ -116,6 +117,7 @@ export async function addMember(organizationId: string, input: AddMemberInput, u
   const existing = await checkMembership(organizationId, user.id);
   if (existing) throw new ConflictError("Bu kullanıcı zaten organizasyon üyesi");
 
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
   const member = await prisma.organizationMember.create({
     data: {
       organizationId,
@@ -125,6 +127,12 @@ export async function addMember(organizationId: string, input: AddMemberInput, u
     include: {
       user: { select: { id: true, name: true, email: true } },
     },
+  });
+
+  await notificationService.createNotification({
+    userId: user.id,
+    type: "ORG_JOINED",
+    message: `"${org?.name ?? "Organizasyon"}" organizasyonuna katıldınız`,
   });
 
   return member;
@@ -142,7 +150,48 @@ export async function removeMember(organizationId: string, memberUserId: string,
   const member = await checkMembership(organizationId, memberUserId);
   if (!member) throw new NotFoundError("Üye");
 
+  // Bildirimi silme işlemi öncesinde gönder
+  await notificationService.createNotification({
+    userId: memberUserId,
+    type: "ORG_REMOVED",
+    message: `"${org?.name ?? "Organizasyon"}" organizasyonundan çıkarıldınız`,
+  });
+
   await prisma.organizationMember.delete({
     where: { organizationId_userId: { organizationId, userId: memberUserId } },
   });
+}
+
+export async function updateMemberRole(organizationId: string, input: UpdateMemberRoleInput, userId: string) {
+  const isAdmin = await checkAdmin(organizationId, userId);
+  if (!isAdmin) throw new UnauthorizedError("Sadece adminler rol değiştirebilir");
+
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  if (!org) throw new NotFoundError("Organizasyon");
+
+  if (org.ownerId === input.userId) {
+    throw new UnauthorizedError("Kurucunun rolü değiştirilemez");
+  }
+
+  const member = await checkMembership(organizationId, input.userId);
+  if (!member) throw new NotFoundError("Üye");
+
+  const updated = await prisma.organizationMember.update({
+    where: { organizationId_userId: { organizationId, userId: input.userId } },
+    data: { role: input.role as Role },
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  // Sadece admin yapılınca bildirim git
+  if (input.role === "ADMIN") {
+    await notificationService.createNotification({
+      userId: input.userId,
+      type: "ROLE_CHANGED",
+      message: `"${org.name}" organizasyonunda yönetici yapıldınız`,
+    });
+  }
+
+  return updated;
 }
