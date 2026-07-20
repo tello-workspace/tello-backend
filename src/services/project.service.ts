@@ -26,6 +26,16 @@ export async function createProject(organizationId: string, input: CreateProject
       description: input.description,
       organizationId,
       ownerId: userId,
+      columns: {
+        create: [
+          { name: "To Do", position: 1 },
+          { name: "In Progress", position: 2 },
+          { name: "Done", position: 3, isDone: true },
+        ],
+      },
+    },
+    include: {
+      columns: { orderBy: { position: "asc" } },
     },
   });
 
