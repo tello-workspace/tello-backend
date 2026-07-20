@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 
-type ApiResponse<T = unknown> = {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+// Başarılı response
+type SuccessPayload<T = unknown> = {
+  success: true;
+  data: T;
+};
+
+// Hata response
+type ErrorPayload = {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    fields?: Record<string, string>;
+  };
 };
 
 const CORS_HEADERS = {
@@ -14,9 +24,38 @@ const CORS_HEADERS = {
 };
 
 export function successResponse<T>(data: T, status = 200) {
-  return NextResponse.json({ success: true, data } satisfies ApiResponse<T>, { status, headers: CORS_HEADERS });
+  const body: SuccessPayload<T> = { success: true, data };
+  return NextResponse.json(body, { status, headers: CORS_HEADERS });
 }
 
-export function errorResponse(error: string, status = 400) {
-  return NextResponse.json({ success: false, error } satisfies ApiResponse, { status, headers: CORS_HEADERS });
+export function errorResponse(
+  message: string,
+  status = 400,
+  code = "INTERNAL_ERROR",
+) {
+  const body: ErrorPayload = {
+    success: false,
+    error: { code, message },
+  };
+  return NextResponse.json(body, { status, headers: CORS_HEADERS });
+}
+
+export function validationError(zodError: ZodError) {
+  const fields: Record<string, string> = {};
+  for (const issue of zodError.issues) {
+    const path = issue.path.join(".");
+    if (!fields[path]) {
+      fields[path] = issue.message;
+    }
+  }
+
+  const body: ErrorPayload = {
+    success: false,
+    error: {
+      code: "VALIDATION_ERROR",
+      message: "Geçersiz veri",
+      fields,
+    },
+  };
+  return NextResponse.json(body, { status: 400, headers: CORS_HEADERS });
 }

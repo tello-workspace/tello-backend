@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
     return successResponse(result);
   } catch (error) {
     if (error instanceof AppError) {
-      return errorResponse(error.message, error.statusCode);
+      return errorResponse(error.message, error.statusCode, error.code);
     }
-    return errorResponse("Kullanıcı bilgisi alınamadı", 500);
+    return errorResponse("Kullanıcı bilgisi alınamadı", 500, "INTERNAL_ERROR");
   }
 }
