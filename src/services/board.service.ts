@@ -50,6 +50,7 @@ export async function getBoard(projectId: string, userId: string) {
         description: card.description,
         dueDate: card.dueDate?.toISOString().split("T")[0],
         columnId: card.columnId,
+        assigneeId: card.assigneeId,
         assignee: card.assignee?.name ?? null,
         assigneeAvatar: card.assignee?.name
           ? card.assignee.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()

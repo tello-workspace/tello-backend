@@ -33,6 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       description: card.description,
       dueDate: card.dueDate?.toISOString().split("T")[0],
       columnId: card.columnId,
+      assigneeId: (card as any).assignee?.id ?? null,
       assignee: (card as any).assignee?.name ?? null,
       assigneeAvatar: (card as any).assignee?.name
         ? (card as any).assignee.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()

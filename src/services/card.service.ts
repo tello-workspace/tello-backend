@@ -35,8 +35,31 @@ async function getNextPosition(columnId: string): Promise<number> {
   return (lastCard?.position ?? 0) + 1;
 }
 
+// Atanan kişinin organizasyon üyesi olduğunu doğrula
+async function validateAssignee(columnId: string, assigneeId: string) {
+  const column = await prisma.column.findUnique({
+    where: { id: columnId },
+    select: { project: { select: { organizationId: true } } },
+  });
+  if (!column) throw new NotFoundError("Sütun");
+
+  const member = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId: column.project.organizationId,
+        userId: assigneeId,
+      },
+    },
+  });
+  if (!member) throw new ForbiddenError("Atanan kişi bu organizasyonun üyesi değil");
+}
+
 export async function createCard(columnId: string, input: CreateCardInput, userId: string) {
   await checkColumnAccess(columnId, userId);
+
+  if (input.assigneeId) {
+    await validateAssignee(columnId, input.assigneeId);
+  }
 
   const position = input.position ?? (await getNextPosition(columnId));
 
@@ -119,7 +142,14 @@ export async function updateCard(cardId: string, input: UpdateCardInput, userId:
   if (input.title !== undefined) updateData.title = input.title;
   if (input.description !== undefined) updateData.description = input.description;
   if (input.priority !== undefined) updateData.priority = input.priority as Priority;
-  if (input.assigneeId !== undefined) updateData.assigneeId = input.assigneeId;
+  if (input.assigneeId !== undefined) {
+    // null ise atamayı kaldır, değilse üyeliği doğrula
+    if (input.assigneeId !== null) {
+      const colId = input.columnId ?? card.columnId;
+      await validateAssignee(colId, input.assigneeId);
+    }
+    updateData.assigneeId = input.assigneeId;
+  }
   if (input.dueDate !== undefined) updateData.dueDate = input.dueDate ? new Date(input.dueDate) : null;
   if (input.columnId !== undefined) updateData.columnId = input.columnId;
   if (input.position !== undefined) updateData.position = input.position;

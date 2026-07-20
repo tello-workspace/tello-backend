@@ -88,6 +88,11 @@ export async function updateProject(organizationId: string, projectId: string, i
   });
   if (!project) throw new NotFoundError("Proje");
 
+  // Proje sahibi veya org admini güncelleyebilir
+  if (project.ownerId !== userId && member.role !== "ADMIN") {
+    throw new ForbiddenError("Sadece proje sahibi veya org admini düzenleyebilir");
+  }
+
   const updated = await prisma.project.update({
     where: { id: projectId },
     data: input,
@@ -97,13 +102,18 @@ export async function updateProject(organizationId: string, projectId: string, i
 }
 
 export async function deleteProject(organizationId: string, projectId: string, userId: string) {
-  const isAdmin = await checkAdmin(organizationId, userId);
-  if (!isAdmin) throw new ForbiddenError("Sadece adminler proje silebilir");
+  const member = await checkMembership(organizationId, userId);
+  if (!member) throw new ForbiddenError("Bu organizasyona erişim yetkiniz yok");
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, organizationId },
   });
   if (!project) throw new NotFoundError("Proje");
+
+  // Proje sahibi veya org admini silebilir
+  if (project.ownerId !== userId && member.role !== "ADMIN") {
+    throw new ForbiddenError("Sadece proje sahibi veya org admini silebilir");
+  }
 
   await prisma.project.delete({ where: { id: projectId } });
 }

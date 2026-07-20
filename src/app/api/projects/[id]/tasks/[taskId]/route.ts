@@ -22,6 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       description: card.description,
       dueDate: card.dueDate?.toISOString().split("T")[0],
       columnId: card.columnId,
+      assigneeId: (card.assignee as any)?.id ?? null,
       assignee: (card.assignee as any)?.name ?? null,
       assigneeAvatar: (card.assignee as any)?.name
         ? (card.assignee as any).name.split(" ").map((n: string) => n[0]).join("").toUpperCase()
@@ -44,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const user = (request as AuthenticatedRequest).user;
     const { taskId } = await params;
     const body = await request.json();
-    const { title, description, dueDate, assignee: _assigneeName, columnId } = body;
+    const { title, description, dueDate, assignee: _assigneeName, assigneeId, columnId } = body;
 
     // Sadece backend'in bildiği alanları geç
     const updateData: Record<string, unknown> = {};
@@ -52,6 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (description !== undefined) updateData.description = description;
     if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate).toISOString() : null;
     if (columnId !== undefined) updateData.columnId = columnId;
+    if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null;
 
     const validated = updateCardSchema.parse(updateData);
     const card = await cardService.updateCard(taskId, validated, user.id);
@@ -62,6 +64,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       description: card.description,
       dueDate: card.dueDate?.toISOString().split("T")[0],
       columnId: card.columnId,
+      assigneeId: (card as any).assignee?.id ?? null,
       assignee: (card as any).assignee?.name ?? null,
       assigneeAvatar: (card as any).assignee?.name
         ? (card as any).assignee.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()
