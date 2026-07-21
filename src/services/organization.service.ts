@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { NotFoundError, ConflictError, UnauthorizedError } from "@/utils/errors";
 import * as notificationService from "@/services/notification.service";
+import * as invitationService from "@/services/invitation.service";
+import { getIO, broadcastToOrganization, SocketEvents } from "@/server/socket";
 import type { CreateOrganizationInput, UpdateOrganizationInput, AddMemberInput, UpdateMemberRoleInput } from "@/schemas/organization.schema";
 import type { Role } from "@prisma/client";
 
@@ -106,36 +108,9 @@ export async function deleteOrganization(organizationId: string, userId: string)
 // --- ÜYE YÖNETİMİ ---
 
 export async function addMember(organizationId: string, input: AddMemberInput, userId: string) {
-  const isAdmin = await checkAdmin(organizationId, userId);
-  if (!isAdmin) throw new UnauthorizedError("Sadece adminler üye ekleyebilir");
-
-  // Email ile kullanıcıyı bul
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
-  if (!user) throw new NotFoundError("Bu email ile kayıtlı kullanıcı bulunamadı");
-
-  // Zaten üye mi?
-  const existing = await checkMembership(organizationId, user.id);
-  if (existing) throw new ConflictError("Bu kullanıcı zaten organizasyon üyesi");
-
-  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
-  const member = await prisma.organizationMember.create({
-    data: {
-      organizationId,
-      userId: user.id,
-      role: (input.role ?? "MEMBER") as Role,
-    },
-    include: {
-      user: { select: { id: true, name: true, email: true } },
-    },
-  });
-
-  await notificationService.createNotification({
-    userId: user.id,
-    type: "ORG_JOINED",
-    message: `"${org?.name ?? "Organizasyon"}" organizasyonuna katıldınız`,
-  });
-
-  return member;
+  // Davet oluştur (invitationService email ile davet oluşturup bildirim gönderir)
+  const invitation = await invitationService.createInvitation(organizationId, input.email, userId);
+  return invitation;
 }
 
 export async function removeMember(organizationId: string, memberUserId: string, userId: string) {
@@ -151,11 +126,25 @@ export async function removeMember(organizationId: string, memberUserId: string,
   if (!member) throw new NotFoundError("Üye");
 
   // Bildirimi silme işlemi öncesinde gönder
+  const removedUser = await prisma.user.findUnique({
+    where: { id: memberUserId },
+    select: { id: true, name: true, email: true },
+  });
   await notificationService.createNotification({
     userId: memberUserId,
     type: "ORG_REMOVED",
     message: `"${org?.name ?? "Organizasyon"}" organizasyonundan çıkarıldınız`,
   });
+
+  // Socket.io emit — üye çıkarıldı
+  if (removedUser) {
+    broadcastToOrganization(organizationId, SocketEvents.ORG_MEMBER_REMOVED, {
+      organizationId,
+      userId: memberUserId,
+      userName: removedUser.name,
+      removedBy: "admin",
+    });
+  }
 
   await prisma.organizationMember.delete({
     where: { organizationId_userId: { organizationId, userId: memberUserId } },
@@ -192,6 +181,15 @@ export async function updateMemberRole(organizationId: string, input: UpdateMemb
       message: `"${org.name}" organizasyonunda yönetici yapıldınız`,
     });
   }
+
+  // Socket.io emit — rol değişti
+  broadcastToOrganization(organizationId, SocketEvents.ORG_MEMBER_ROLE_CHANGED, {
+    organizationId,
+    userId: input.userId,
+    userName: updated.user.name,
+    role: input.role,
+    changedBy: "admin",
+  });
 
   return updated;
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NotFoundError, ForbiddenError } from "@/utils/errors";
 import * as notificationService from "@/services/notification.service";
+import { getIO, broadcastToProject, broadcastToCard, SocketEvents } from "@/server/socket";
 import type { CreateCardInput, UpdateCardInput } from "@/schemas/card.schema";
 import type { Priority } from "@prisma/client";
 
@@ -56,6 +57,12 @@ async function validateAssignee(columnId: string, assigneeId: string) {
 }
 
 export async function createCard(columnId: string, input: CreateCardInput, userId: string) {
+  const column = await prisma.column.findUnique({
+    where: { id: columnId },
+    select: { projectId: true },
+  });
+  if (!column) throw new NotFoundError("Sütun");
+
   await checkColumnAccess(columnId, userId);
 
   if (input.assigneeId) {
@@ -89,6 +96,20 @@ export async function createCard(columnId: string, input: CreateCardInput, userI
       cardId: card.id,
     });
   }
+
+  // Socket.io emit — yeni kart oluşturuldu
+  broadcastToProject(column.projectId, SocketEvents.CARD_CREATED, {
+    id: card.id,
+    title: card.title,
+    description: card.description,
+    columnId: card.columnId,
+    projectId: column.projectId,
+    assigneeId: card.assigneeId,
+    assignee: card.assignee ? { id: card.assignee.id, name: card.assignee.name } : undefined,
+    priority: card.priority,
+    dueDate: card.dueDate?.toISOString() ?? null,
+    position: card.position,
+  });
 
   return card;
 }
@@ -199,6 +220,52 @@ export async function updateCard(cardId: string, input: UpdateCardInput, userId:
     });
   }
 
+  // Socket.io emit — kart güncellendi
+  const col = await prisma.column.findUnique({
+    where: { id: updated.columnId },
+    select: { projectId: true },
+  });
+  if (col) {
+    const projectId = col.projectId;
+
+    if (isColumnChange) {
+      // Kolon değişmişse CARD_MOVED emit
+      broadcastToProject(projectId, SocketEvents.CARD_MOVED, {
+        cardId: updated.id,
+        fromColumnId: card.columnId,
+        toColumnId: updated.columnId,
+        position: updated.position,
+        projectId,
+      });
+    }
+
+    // Atama değişmişse CARD_ASSIGNED emit
+    if (input.assigneeId && input.assigneeId !== oldAssigneeId) {
+      broadcastToProject(projectId, SocketEvents.CARD_ASSIGNED, {
+        cardId: updated.id,
+        cardTitle: updated.title,
+        assigneeId: updated.assigneeId!,
+        assigneeName: updated.assignee?.name ?? "",
+        assignedById: userId,
+        assignedByName: "",
+      });
+    }
+
+    // Her durumda güncellemeyi bildir (taşıma + düzenleme)
+    broadcastToProject(projectId, SocketEvents.CARD_UPDATED, {
+      id: updated.id,
+      title: updated.title,
+      description: updated.description,
+      columnId: updated.columnId,
+      projectId,
+      assigneeId: updated.assigneeId,
+      assignee: updated.assignee ? { id: updated.assignee.id, name: updated.assignee.name } : undefined,
+      priority: updated.priority,
+      dueDate: updated.dueDate?.toISOString() ?? null,
+      position: updated.position,
+    });
+  }
+
   return updated;
 }
 
@@ -208,5 +275,15 @@ export async function deleteCard(cardId: string, userId: string) {
 
   await checkColumnAccess(card.columnId, userId);
 
+  const col = await prisma.column.findUnique({
+    where: { id: card.columnId },
+    select: { projectId: true },
+  });
+
   await prisma.card.delete({ where: { id: cardId } });
+
+  // Socket.io emit — kart silindi
+  if (col) {
+    broadcastToProject(col.projectId, SocketEvents.CARD_DELETED, cardId);
+  }
 }

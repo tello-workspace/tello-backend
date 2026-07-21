@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NotFoundError, ForbiddenError } from "@/utils/errors";
 import * as notificationService from "@/services/notification.service";
+import { getIO, broadcastToOrganization, broadcastToProject, SocketEvents } from "@/server/socket";
 import type { CreateProjectInput, UpdateProjectInput } from "@/schemas/project.schema";
 
 // Organization üyeliğini kontrol et
@@ -46,6 +47,15 @@ export async function createProject(organizationId: string, input: CreateProject
     `"${project.name}" projesi oluşturuldu`,
     userId, // yapan hariç
   );
+
+  // Socket.io emit — yeni proje oluşturuldu
+  broadcastToOrganization(organizationId, SocketEvents.PROJECT_CREATED, {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    organizationId,
+    ownerId: userId,
+  });
 
   return project;
 }
@@ -106,6 +116,19 @@ export async function updateProject(organizationId: string, projectId: string, i
     data: input,
   });
 
+  // Socket.io emit — proje güncellendi
+  broadcastToOrganization(organizationId, SocketEvents.PROJECT_UPDATED, {
+    projectId: updated.id,
+    project: {
+      id: updated.id,
+      name: updated.name,
+      description: updated.description,
+      organizationId,
+      ownerId: updated.ownerId,
+    },
+    updatedBy: userId,
+  });
+
   return updated;
 }
 
@@ -129,6 +152,13 @@ export async function deleteProject(organizationId: string, projectId: string, u
     `"${project.name}" projesi silindi`,
     userId, // yapan hariç
   );
+
+  // Socket.io emit — proje silindi
+  broadcastToOrganization(organizationId, SocketEvents.PROJECT_DELETED, {
+    projectId: project.id,
+    projectName: project.name,
+    deletedBy: userId,
+  });
 
   await prisma.project.delete({ where: { id: projectId } });
 }
