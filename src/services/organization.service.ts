@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { NotFoundError, ConflictError, UnauthorizedError } from "@/utils/errors";
+import { NotFoundError, ConflictError, ForbiddenError } from "@/utils/errors";
 import * as notificationService from "@/services/notification.service";
 import * as invitationService from "@/services/invitation.service";
 import { getIO, broadcastToOrganization, SocketEvents } from "@/server/socket";
@@ -10,6 +10,9 @@ import type { Role } from "@prisma/client";
 async function checkMembership(organizationId: string, userId: string) {
   const member = await prisma.organizationMember.findUnique({
     where: { organizationId_userId: { organizationId, userId } },
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+    },
   });
   return member;
 }
@@ -65,7 +68,7 @@ export async function getMyOrganizations(userId: string) {
 
 export async function getOrganizationById(organizationId: string, userId: string) {
   const member = await checkMembership(organizationId, userId);
-  if (!member) throw new UnauthorizedError("Bu organizasyona erişim yetkiniz yok");
+  if (!member) throw new ForbiddenError("Bu organizasyona erişim yetkiniz yok");
 
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -87,7 +90,7 @@ export async function getOrganizationById(organizationId: string, userId: string
 
 export async function updateOrganization(organizationId: string, input: UpdateOrganizationInput, userId: string) {
   const isAdmin = await checkAdmin(organizationId, userId);
-  if (!isAdmin) throw new UnauthorizedError("Sadece adminler organizasyonu düzenleyebilir");
+  if (!isAdmin) throw new ForbiddenError("Sadece adminler organizasyonu düzenleyebilir");
 
   const org = await prisma.organization.update({
     where: { id: organizationId },
@@ -100,7 +103,7 @@ export async function updateOrganization(organizationId: string, input: UpdateOr
 export async function deleteOrganization(organizationId: string, userId: string) {
   const org = await prisma.organization.findUnique({ where: { id: organizationId } });
   if (!org) throw new NotFoundError("Organizasyon");
-  if (org.ownerId !== userId) throw new UnauthorizedError("Sadece kurucu organizasyonu silebilir");
+  if (org.ownerId !== userId) throw new ForbiddenError("Sadece kurucu organizasyonu silebilir");
 
   await prisma.organization.delete({ where: { id: organizationId } });
 }
@@ -115,21 +118,17 @@ export async function addMember(organizationId: string, input: AddMemberInput, u
 
 export async function removeMember(organizationId: string, memberUserId: string, userId: string) {
   const isAdmin = await checkAdmin(organizationId, userId);
-  if (!isAdmin) throw new UnauthorizedError("Sadece adminler üye çıkarabilir");
+  if (!isAdmin) throw new ForbiddenError("Sadece adminler üye çıkarabilir");
 
   // Kurucu çıkarılamaz
   const org = await prisma.organization.findUnique({ where: { id: organizationId } });
-  if (org?.ownerId === memberUserId) throw new UnauthorizedError("Kurucu organizasyondan çıkarılamaz");
+  if (org?.ownerId === memberUserId) throw new ForbiddenError("Kurucu organizasyondan çıkarılamaz");
 
   // Kendini çıkarmaya çalışıyorsa admin de olsa izin ver (ayrılma)
   const member = await checkMembership(organizationId, memberUserId);
   if (!member) throw new NotFoundError("Üye");
 
   // Bildirimi silme işlemi öncesinde gönder
-  const removedUser = await prisma.user.findUnique({
-    where: { id: memberUserId },
-    select: { id: true, name: true, email: true },
-  });
   await notificationService.createNotification({
     userId: memberUserId,
     type: "ORG_REMOVED",
@@ -137,14 +136,12 @@ export async function removeMember(organizationId: string, memberUserId: string,
   });
 
   // Socket.io emit — üye çıkarıldı
-  if (removedUser) {
-    broadcastToOrganization(organizationId, SocketEvents.ORG_MEMBER_REMOVED, {
-      organizationId,
-      userId: memberUserId,
-      userName: removedUser.name,
-      removedBy: "admin",
-    });
-  }
+  broadcastToOrganization(organizationId, SocketEvents.ORG_MEMBER_REMOVED, {
+    organizationId,
+    userId: memberUserId,
+    userName: member.user?.name ?? "Bilinmeyen",
+    message: `"${org?.name ?? "Organizasyon"}" organizasyonundan çıkarıldı`,
+  });
 
   await prisma.organizationMember.delete({
     where: { organizationId_userId: { organizationId, userId: memberUserId } },
@@ -153,13 +150,13 @@ export async function removeMember(organizationId: string, memberUserId: string,
 
 export async function updateMemberRole(organizationId: string, input: UpdateMemberRoleInput, userId: string) {
   const isAdmin = await checkAdmin(organizationId, userId);
-  if (!isAdmin) throw new UnauthorizedError("Sadece adminler rol değiştirebilir");
+  if (!isAdmin) throw new ForbiddenError("Sadece adminler rol değiştirebilir");
 
   const org = await prisma.organization.findUnique({ where: { id: organizationId } });
   if (!org) throw new NotFoundError("Organizasyon");
 
   if (org.ownerId === input.userId) {
-    throw new UnauthorizedError("Kurucunun rolü değiştirilemez");
+    throw new ForbiddenError("Kurucunun rolü değiştirilemez");
   }
 
   const member = await checkMembership(organizationId, input.userId);
@@ -186,9 +183,9 @@ export async function updateMemberRole(organizationId: string, input: UpdateMemb
   broadcastToOrganization(organizationId, SocketEvents.ORG_MEMBER_ROLE_CHANGED, {
     organizationId,
     userId: input.userId,
-    userName: updated.user.name,
+    userName: updated.user?.name ?? "Bilinmeyen",
     role: input.role,
-    changedBy: "admin",
+    message: `"${org.name}" organizasyonunda rolü değiştirildi: ${input.role}`,
   });
 
   return updated;

@@ -250,13 +250,21 @@ export interface AuthenticatedSocket extends Socket {
   projects?: string[];
 }
 
+declare global {
+  var __io: SocketIOServer<ServerSocketEvents> | undefined;
+}
+
 let io: SocketIOServer<ServerSocketEvents> | null = null;
 
 export function getIO(): SocketIOServer<ServerSocketEvents> | null {
-  return io;
+  return globalThis.__io || io || null;
 }
 
 export function initializeSocket(httpServer: HttpServer): SocketIOServer<ServerSocketEvents> {
+  if (globalThis.__io) {
+    return globalThis.__io;
+  }
+
   io = new SocketIOServer<ServerSocketEvents>(httpServer, {
     cors: {
       origin: process.env.FRONTEND_URL || "http://localhost:3000",
@@ -267,6 +275,8 @@ export function initializeSocket(httpServer: HttpServer): SocketIOServer<ServerS
     pingTimeout: 60000,
     pingInterval: 25000,
   });
+
+  globalThis.__io = io;
 
   // Authentication middleware
   io.use(async (socket: AuthenticatedSocket, next) => {
@@ -398,35 +408,41 @@ export function initializeSocket(httpServer: HttpServer): SocketIOServer<ServerS
 type SocketEventName = keyof ServerSocketEvents & string;
 
 export function broadcastToUser(userId: string, event: SocketEventName, data: unknown) {
-  if (!io) {
+  const ioServer = getIO();
+  if (!ioServer) {
     console.log(`[SOCKET] broadcastToUser: io is null, cannot emit ${event} to user:${userId}`);
     return;
   }
   console.log(`[SOCKET] Emitting ${event} to user:${userId}, data:`, JSON.stringify(data).slice(0, 200));
-  (io.to(`user:${userId}`).emit as (event: string, data: unknown) => void)(event, data);
+  (ioServer.to(`user:${userId}`).emit as (event: string, data: unknown) => void)(event, data);
 }
 
 export function broadcastToOrganization(organizationId: string, event: SocketEventName, data: unknown) {
-  if (!io) return;
-  (io.to(`org:${organizationId}`).emit as (event: string, data: unknown) => void)(event, data);
+  const ioServer = getIO();
+  if (!ioServer) return;
+  (ioServer.to(`org:${organizationId}`).emit as (event: string, data: unknown) => void)(event, data);
 }
 
 export function broadcastToProject(projectId: string, event: SocketEventName, data: unknown) {
-  if (!io) return;
-  (io.to(`project:${projectId}`).emit as (event: string, data: unknown) => void)(event, data);
+  const ioServer = getIO();
+  if (!ioServer) return;
+  (ioServer.to(`project:${projectId}`).emit as (event: string, data: unknown) => void)(event, data);
 }
 
 export function broadcastToCard(cardId: string, event: SocketEventName, data: unknown) {
-  if (!io) return;
-  (io.to(`card:${cardId}`).emit as (event: string, data: unknown) => void)(event, data);
+  const ioServer = getIO();
+  if (!ioServer) return;
+  (ioServer.to(`card:${cardId}`).emit as (event: string, data: unknown) => void)(event, data);
 }
 
 function broadcastUserOnline(userId: string) {
-  if (!io) return;
-  io.emit(SocketEvents.USER_ONLINE, userId);
+  const ioServer = getIO();
+  if (!ioServer) return;
+  ioServer.emit(SocketEvents.USER_ONLINE, userId);
 }
 
 function broadcastUserOffline(userId: string) {
-  if (!io) return;
-  io.emit(SocketEvents.USER_OFFLINE, userId);
+  const ioServer = getIO();
+  if (!ioServer) return;
+  ioServer.emit(SocketEvents.USER_OFFLINE, userId);
 }
